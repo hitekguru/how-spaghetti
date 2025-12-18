@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
+import plotly.express as px  # New library for the Spider Chart
 from streamlit_gsheets import GSheetsConnection
 
 # 1. PAGE SETUP
@@ -28,14 +29,12 @@ if df is None:
     st.error("⚠️ Connection Error: Could not read Google Sheet.")
     st.stop()
 
-# 3. INITIALIZE MISSING COLUMNS (Auto-fixer)
-# This ensures code doesn't crash if a column is empty in the sheet
+# 3. INITIALIZE COLUMNS & DEFAULTS
 metrics = [
     "Classically_Mythic", "Spaghettiness", "Grit", "Darkness", 
     "Weird", "Shenanigans", "Wild_Adventure", "Cinematography", "Sound_Score"
 ]
 
-# Ensure we have a Vote_Count and Sum column for every metric
 if "Vote_Count" not in df.columns:
     df["Vote_Count"] = 1
 if "Sum_Rating" not in df.columns:
@@ -43,25 +42,37 @@ if "Sum_Rating" not in df.columns:
 
 for m in metrics:
     if m not in df.columns:
-        df[m] = 5.0 # Default mid-point
+        df[m] = 5.0 
     if f"Sum_{m}" not in df.columns:
         df[f"Sum_{m}"] = df[m]
 
-# 4. THE SCATTERPLOT (Year vs Quality)
-st.subheader("The Western Landscape")
-st.caption("X: Year | Y: Overall Rating | Size: Spaghettiness")
+# 4. THE METRIC EXPLORER (The New Chart)
+st.subheader("🧬 Genre DNA Explorer")
+st.caption("Compare movies across any two dimensions. Where do they sit?")
 
+# Dropdowns to control the chart
+c1, c2, c3 = st.columns(3)
+with c1:
+    x_axis = st.selectbox("X-Axis (Bottom)", metrics, index=1) # Default: Spaghettiness
+with c2:
+    y_axis = st.selectbox("Y-Axis (Left)", metrics, index=2)   # Default: Grit
+with c3:
+    z_axis = st.selectbox("Size of Bubble", ["Avg_Rating"] + metrics, index=0)
+
+# The Dynamic Scatter Plot
 scatter = alt.Chart(df).mark_circle().encode(
-    x=alt.X('Year', scale=alt.Scale(domain=[1930, 2025]), title='Release Year'),
-    y=alt.Y('Avg_Rating', scale=alt.Scale(domain=[0, 10]), title='Overall Rating (0-10)'),
-    size=alt.Size('Spaghettiness', legend=None, scale=alt.Scale(range=[50, 500])),
+    x=alt.X(x_axis, scale=alt.Scale(domain=[-0.5, 10.5]), title=x_axis),
+    y=alt.Y(y_axis, scale=alt.Scale(domain=[-0.5, 10.5]), title=y_axis),
+    size=alt.Size(z_axis, legend=None, scale=alt.Scale(range=[50, 500])),
     color=alt.Color('Type', legend=alt.Legend(title="Sub-Genre")),
-    tooltip=['Title', 'Year', 'Avg_Rating', 'Spaghettiness', 'Classically_Mythic']
-).properties(height=400).interactive()
+    tooltip=['Title', 'Year', 'Avg_Rating', x_axis, y_axis]
+).properties(
+    height=500  # Taller chart
+).interactive()
 
 st.altair_chart(scatter, use_container_width=True)
 
-# 5. THE DATA DIRECTORY (RockAuto Style)
+# 5. THE MOVIE DIRECTORY (Taller List)
 st.subheader("Movie Directory")
 event = st.dataframe(
     df,
@@ -77,111 +88,114 @@ event = st.dataframe(
     },
     use_container_width=True,
     hide_index=True,
+    height=800, # <--- FIXED: Much taller list (approx 20+ rows visible)
     on_select="rerun",
     selection_mode="single-row"
 )
 
-# 6. THE REVIEW FORM (The DNA Matrix)
+# 6. THE DRILL DOWN (Review + Radar Chart)
 if len(event.selection.rows) > 0:
     selected_index = event.selection.rows[0]
     movie = df.iloc[selected_index]
     
     st.divider()
-    c1, c2 = st.columns([1, 3])
     
-    with c1:
-        st.image(movie["Poster_URL"], caption=f"{movie['Year']}")
-        st.metric("Current Rating", f"{movie['Avg_Rating']} / 10")
+    # Top Row: Title & Radar Chart
+    r1, r2 = st.columns([1, 2])
     
-    with c2:
-        st.subheader(f"Rate: {movie['Title']}")
-        with st.form("rating_form"):
-            st.write(" **0 = Absent | 10 = Maximum Intensity**")
+    with r1:
+        st.image(movie["Poster_URL"], caption=f"{movie['Year']} | {movie['Type']}")
+        st.metric("Overall Enjoyment", f"{movie['Avg_Rating']} / 10")
+    
+    with r2:
+        st.subheader(f"Genre Fingerprint: {movie['Title']}")
+        # PREPARE DATA FOR RADAR CHART
+        radar_data = pd.DataFrame(dict(
+            r=[movie[m] for m in metrics],
+            theta=metrics
+        ))
+        
+        # DRAW RADAR CHART
+        fig = px.line_polar(radar_data, r='r', theta='theta', line_close=True)
+        fig.update_traces(fill='toself', line_color='#ff4b4b') # Streamlit Red
+        fig.update_layout(
+            polar=dict(radialaxis=dict(visible=True, range=[0, 10])),
+            margin=dict(t=10, b=10, l=10, r=10),
+            height=350,
+            paper_bgcolor="rgba(0,0,0,0)", # Transparent background
+            plot_bgcolor="rgba(0,0,0,0)",
+            font_color="white" # Looks better in dark mode
+        )
+        st.plotly_chart(fig, use_container_width=True)
+
+    # Bottom Row: The Sliders
+    st.subheader("🧬 Update the DNA")
+    with st.form("rating_form"):
+        st.write("Adjust the sliders below to refine the taxonomy.")
+        
+        # Group 1
+        st.markdown("### 🎭 The Soul")
+        c_a1, c_a2, c_a3 = st.columns(3)
+        with c_a1:
+            u_mythic = st.slider("🏛️ Mythic", 0, 10, int(movie.get('Classically_Mythic', 5)))
+        with c_a2:
+            u_spag = st.slider("🍝 Spaghettiness", 0, 10, int(movie.get('Spaghettiness', 5)))
+        with c_a3:
+            u_grit = st.slider("🌵 Grit", 0, 10, int(movie.get('Grit', 5)))
+
+        # Group 2
+        st.markdown("### 🔮 The Vibe")
+        c_b1, c_b2, c_b3 = st.columns(3)
+        with c_b1:
+            u_dark = st.slider("md Darkness", 0, 10, int(movie.get('Darkness', 0)))
+        with c_b2:
+            u_weird = st.slider("👽 Weird", 0, 10, int(movie.get('Weird', 0)))
+        with c_b3:
+            u_shenan = st.slider("🃏 Shenanigans", 0, 10, int(movie.get('Shenanigans', 0)))
+
+        # Group 3
+        st.markdown("### 🎬 The Craft")
+        c_c1, c_c2, c_c3 = st.columns(3)
+        with c_c1:
+            u_wild = st.slider("🐎 Wild Adventure", 0, 10, int(movie.get('Wild_Adventure', 5)))
+        with c_c2:
+            u_cine = st.slider("🎥 Cinematography", 0, 10, int(movie.get('Cinematography', 5)))
+        with c_c3:
+            u_sound = st.slider("🎵 Sound & Score", 0, 10, int(movie.get('Sound_Score', 5)))
+
+        st.divider()
+        u_overall = st.slider("⭐ Overall Rating", 0.0, 10.0, float(movie.get('Avg_Rating', 5.0)))
+        
+        if st.form_submit_button("Submit Rating"):
+            # Update Logic (Weighted Average)
+            curr_votes = float(movie.get("Vote_Count", 1))
+            new_votes = curr_votes + 1
             
-            # Group 1: The Soul
-            st.markdown("### 🎭 The Soul")
-            col_a1, col_a2, col_a3 = st.columns(3)
-            with col_a1:
-                user_mythic = st.slider("🏛️ Classically Mythic", 0, 10, int(movie.get('Classically_Mythic', 5)))
-                st.caption("Americana, John Wayne, Righteousness")
-            with col_a2:
-                user_spag = st.slider("🍝 Spaghettiness", 0, 10, int(movie.get('Spaghettiness', 5)))
-                st.caption("Cynicism, Twang, Stare-downs")
-            with col_a3:
-                user_grit = st.slider("🌵 Grit", 0, 10, int(movie.get('Grit', 5)))
-                st.caption("Mud, Blood, Sweat, Realism")
+            def calc_new(old_val, col_sum, user_input):
+                curr_sum = float(movie.get(col_sum, old_val * curr_votes))
+                new_sum = curr_sum + user_input
+                return new_sum, new_sum / new_votes
 
-            # Group 2: The Vibe
-            st.markdown("### 🔮 The Vibe")
-            col_b1, col_b2, col_b3 = st.columns(3)
-            with col_b1:
-                user_dark = st.slider("md Darkness", 0, 10, int(movie.get('Darkness', 0)))
-                st.caption("Bleak, Nihilistic, Evil")
-            with col_b2:
-                user_weird = st.slider("👽 Weirdo Factor", 0, 10, int(movie.get('Weird', 0)))
-                st.caption("Surreal, Psychedelic, Off-wall")
-            with col_b3:
-                user_shenan = st.slider("🃏 Shenanigans", 0, 10, int(movie.get('Shenanigans', 0)))
-                st.caption("Comedy, Parody, Slapstick")
+            # Update Metadata
+            df.at[selected_index, "Vote_Count"] = new_votes
+            n_s, n_a = calc_new(movie['Avg_Rating'], "Sum_Rating", u_overall)
+            df.at[selected_index, "Sum_Rating"] = n_s
+            df.at[selected_index, "Avg_Rating"] = n_a
 
-            # Group 3: The Craft
-            st.markdown("### 🎬 The Craft & Action")
-            col_c1, col_c2, col_c3 = st.columns(3)
-            with col_c1:
-                user_wild = st.slider("🐎 Wild Adventure", 0, 10, int(movie.get('Wild_Adventure', 5)))
-                st.caption("Quests, Gold Rushes, Excitement")
-            with col_c2:
-                user_cine = st.slider("🎥 Cinematography", 0, 10, int(movie.get('Cinematography', 5)))
-                st.caption("Visuals, Framing, Beauty")
-            with col_c3:
-                user_sound = st.slider("🎵 Sound & Score", 0, 10, int(movie.get('Sound_Score', 5)))
-                st.caption("Morricone Twangs, Epic Swells")
-
-            st.divider()
-            user_overall = st.slider("⭐ Overall Rating (Your Enjoyment)", 0.0, 10.0, float(movie.get('Avg_Rating', 5.0)))
-
-            submitted = st.form_submit_button("Submit 10-Point Rating", type="primary")
+            # Update 9 Metrics
+            inputs = [
+                ("Classically_Mythic", u_mythic), ("Spaghettiness", u_spag), ("Grit", u_grit),
+                ("Darkness", u_dark), ("Weird", u_weird), ("Shenanigans", u_shenan),
+                ("Wild_Adventure", u_wild), ("Cinematography", u_cine), ("Sound_Score", u_sound)
+            ]
             
-            if submitted:
-                # Helper to calc new weighted average
-                current_votes = float(movie.get("Vote_Count", 1))
-                new_votes = current_votes + 1
-                
-                def calc_new(old_val, col_sum, user_input):
-                    # If column missing, assume old_val * votes
-                    curr_sum = float(movie.get(col_sum, old_val * current_votes))
-                    new_sum = curr_sum + user_input
-                    return new_sum, new_sum / new_votes
-
-                # 1. Update Vote Count
-                df.at[selected_index, "Vote_Count"] = new_votes
-
-                # 2. Update Overall Rating
-                n_sum, n_avg = calc_new(movie['Avg_Rating'], "Sum_Rating", user_overall)
-                df.at[selected_index, "Sum_Rating"] = n_sum
-                df.at[selected_index, "Avg_Rating"] = n_avg
-
-                # 3. Update The 9 Metrics
-                pairs = [
-                    ("Classically_Mythic", user_mythic), ("Spaghettiness", user_spag),
-                    ("Grit", user_grit), ("Darkness", user_dark),
-                    ("Weird", user_weird), ("Shenanigans", user_shenan),
-                    ("Wild_Adventure", user_wild), ("Cinematography", user_cine),
-                    ("Sound_Score", user_sound)
-                ]
-
-                for metric_name, user_val in pairs:
-                    sum_col = f"Sum_{metric_name}" # e.g. Sum_Grit
-                    # Default old value to 5.0 if missing
-                    old_val = float(movie.get(metric_name, 5.0))
-                    
-                    n_sum, n_avg = calc_new(old_val, sum_col, user_val)
-                    
-                    df.at[selected_index, sum_col] = n_sum
-                    df.at[selected_index, metric_name] = n_avg
-                
-                # 4. Push to Cloud
-                conn.update(data=df)
-                st.success("✅ DNA Updated! Refreshing...")
-                st.cache_data.clear()
-                st.rerun()
+            for m_name, u_val in inputs:
+                s_col = f"Sum_{m_name}"
+                n_s, n_a = calc_new(float(movie.get(m_name, 5.0)), s_col, u_val)
+                df.at[selected_index, s_col] = n_s
+                df.at[selected_index, m_name] = n_a
+            
+            conn.update(data=df)
+            st.success("✅ DNA Updated!")
+            st.cache_data.clear()
+            st.rerun()
