@@ -1,0 +1,11 @@
+Title,Year,Type,Spaghetti_Intensity,Remaster_Avail,Poster_URL,Avg_Rating
+A Fistful of Dollars,1964,Spaghetti,5.0,True,https://upload.wikimedia.org/wikipedia/en/9/96/A_Fistful_of_Dollars_poster.jpg,4.8
+The Searchers,1956,Classic,1.0,True,https://upload.wikimedia.org/wikipedia/en/1/1b/The_Searchers_poster.jpg,4.5
+Bone Tomahawk,2015,Horror Western,0.5,False,https://upload.wikimedia.org/wikipedia/en/d/d9/Bone_Tomahawk_poster.jpg,4.1
+Django Unchained,2012,Revisionist,3.5,True,https://upload.wikimedia.org/wikipedia/en/8/8b/Django_Unchained_Poster.jpg,4.7
+High Noon,1952,Classic,0.0,True,https://upload.wikimedia.org/wikipedia/en/5/54/High_noon_poster.jpg,4.3
+The Good The Bad The Ugly,1966,Spaghetti,5.0,True,https://upload.wikimedia.org/wikipedia/en/4/45/Good_the_bad_and_the_ugly_poster.jpg,4.9
+Unforgiven,1992,Revisionist,2.0,True,https://upload.wikimedia.org/wikipedia/en/4/4e/Unforgiven_poster.jpg,4.6
+True Grit,2010,Neo-Western,1.5,True,https://upload.wikimedia.org/wikipedia/en/4/45/True_Grit_poster.jpg,4.4
+Slow West,2015,Revisionist,1.2,False,https://upload.wikimedia.org/wikipedia/en/2/23/Slow_West_poster.jpg,3.9
+Ravenous,1999,Horror Western,0.2,False,https://upload.wikimedia.org/wikipedia/en/d/d2/Ravenous_poster.jpg,3.8
