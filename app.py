@@ -1,7 +1,7 @@
 import streamlit as st
 import pandas as pd
 import altair as alt
-import plotly.express as px  # New library for the Spider Chart
+import plotly.express as px
 from streamlit_gsheets import GSheetsConnection
 
 # 1. PAGE SETUP
@@ -29,7 +29,7 @@ if df is None:
     st.error("⚠️ Connection Error: Could not read Google Sheet.")
     st.stop()
 
-# 3. INITIALIZE COLUMNS & DEFAULTS
+# 3. INITIALIZE COLUMNS
 metrics = [
     "Classically_Mythic", "Spaghettiness", "Grit", "Darkness", 
     "Weird", "Shenanigans", "Wild_Adventure", "Cinematography", "Sound_Score"
@@ -46,33 +46,53 @@ for m in metrics:
     if f"Sum_{m}" not in df.columns:
         df[f"Sum_{m}"] = df[m]
 
-# 4. THE METRIC EXPLORER (The New Chart)
+# 4. THE GENRE DNA EXPLORER (With Labels!)
 st.subheader("🧬 Genre DNA Explorer")
-st.caption("Compare movies across any two dimensions. Where do they sit?")
 
-# Dropdowns to control the chart
-c1, c2, c3 = st.columns(3)
+# Controls
+c1, c2, c3, c4 = st.columns(4)
 with c1:
-    x_axis = st.selectbox("X-Axis (Bottom)", metrics, index=1) # Default: Spaghettiness
+    x_axis = st.selectbox("X-Axis", metrics, index=1)
 with c2:
-    y_axis = st.selectbox("Y-Axis (Left)", metrics, index=2)   # Default: Grit
+    y_axis = st.selectbox("Y-Axis", metrics, index=2)
 with c3:
-    z_axis = st.selectbox("Size of Bubble", ["Avg_Rating"] + metrics, index=0)
+    z_axis = st.selectbox("Size", ["Avg_Rating"] + metrics, index=0)
+with c4:
+    show_labels = st.checkbox("Show Movie Titles", value=True)
 
-# The Dynamic Scatter Plot
-scatter = alt.Chart(df).mark_circle().encode(
+# Build the Chart
+base = alt.Chart(df).encode(
     x=alt.X(x_axis, scale=alt.Scale(domain=[-0.5, 10.5]), title=x_axis),
     y=alt.Y(y_axis, scale=alt.Scale(domain=[-0.5, 10.5]), title=y_axis),
-    size=alt.Size(z_axis, legend=None, scale=alt.Scale(range=[50, 500])),
-    color=alt.Color('Type', legend=alt.Legend(title="Sub-Genre")),
     tooltip=['Title', 'Year', 'Avg_Rating', x_axis, y_axis]
-).properties(
-    height=500  # Taller chart
-).interactive()
+)
 
-st.altair_chart(scatter, use_container_width=True)
+# 1. The Bubbles
+bubbles = base.mark_circle().encode(
+    size=alt.Size(z_axis, legend=None, scale=alt.Scale(range=[100, 1000])),
+    color=alt.Color('Type', legend=alt.Legend(title="Sub-Genre", orient="bottom"))
+)
 
-# 5. THE MOVIE DIRECTORY (Taller List)
+# 2. The Text Labels
+text = base.mark_text(
+    align='center',
+    baseline='middle',
+    dy=-15,  # Shift text up slightly
+    fontSize=10,
+    color='white'
+).encode(
+    text='Title'
+)
+
+# Combine them
+if show_labels:
+    chart = (bubbles + text).properties(height=600).interactive()
+else:
+    chart = bubbles.properties(height=600).interactive()
+
+st.altair_chart(chart, use_container_width=True)
+
+# 5. MOVIE DIRECTORY
 st.subheader("Movie Directory")
 event = st.dataframe(
     df,
@@ -88,19 +108,19 @@ event = st.dataframe(
     },
     use_container_width=True,
     hide_index=True,
-    height=800, # <--- FIXED: Much taller list (approx 20+ rows visible)
+    height=800,
     on_select="rerun",
     selection_mode="single-row"
 )
 
-# 6. THE DRILL DOWN (Review + Radar Chart)
+# 6. DRILL DOWN: RADAR CHART + REVIEW FORM
 if len(event.selection.rows) > 0:
     selected_index = event.selection.rows[0]
     movie = df.iloc[selected_index]
     
     st.divider()
     
-    # Top Row: Title & Radar Chart
+    # --- RADAR CHART SECTION ---
     r1, r2 = st.columns([1, 2])
     
     with r1:
@@ -109,65 +129,53 @@ if len(event.selection.rows) > 0:
     
     with r2:
         st.subheader(f"Genre Fingerprint: {movie['Title']}")
-        # PREPARE DATA FOR RADAR CHART
+        
+        # Prepare Data for Plotly
         radar_data = pd.DataFrame(dict(
             r=[movie[m] for m in metrics],
             theta=metrics
         ))
         
-        # DRAW RADAR CHART
+        # Draw Plotly Chart
         fig = px.line_polar(radar_data, r='r', theta='theta', line_close=True)
-        fig.update_traces(fill='toself', line_color='#ff4b4b') # Streamlit Red
+        fig.update_traces(fill='toself', line_color='#ff4b4b')
         fig.update_layout(
-            polar=dict(radialaxis=dict(visible=True, range=[0, 10])),
-            margin=dict(t=10, b=10, l=10, r=10),
+            polar=dict(
+                radialaxis=dict(visible=True, range=[0, 10], showticklabels=False),
+            ),
+            margin=dict(t=20, b=20, l=40, r=40),
             height=350,
-            paper_bgcolor="rgba(0,0,0,0)", # Transparent background
+            paper_bgcolor="rgba(0,0,0,0)",
             plot_bgcolor="rgba(0,0,0,0)",
-            font_color="white" # Looks better in dark mode
+            font=dict(color="white", size=12)
         )
         st.plotly_chart(fig, use_container_width=True)
 
-    # Bottom Row: The Sliders
+    # --- SLIDERS SECTION ---
     st.subheader("🧬 Update the DNA")
     with st.form("rating_form"):
-        st.write("Adjust the sliders below to refine the taxonomy.")
+        st.write("Adjust sliders to refine the taxonomy.")
         
-        # Group 1
-        st.markdown("### 🎭 The Soul")
         c_a1, c_a2, c_a3 = st.columns(3)
-        with c_a1:
-            u_mythic = st.slider("🏛️ Mythic", 0, 10, int(movie.get('Classically_Mythic', 5)))
-        with c_a2:
-            u_spag = st.slider("🍝 Spaghettiness", 0, 10, int(movie.get('Spaghettiness', 5)))
-        with c_a3:
-            u_grit = st.slider("🌵 Grit", 0, 10, int(movie.get('Grit', 5)))
+        with c_a1: u_mythic = st.slider("🏛️ Mythic", 0, 10, int(movie.get('Classically_Mythic', 5)))
+        with c_a2: u_spag = st.slider("🍝 Spaghettiness", 0, 10, int(movie.get('Spaghettiness', 5)))
+        with c_a3: u_grit = st.slider("🌵 Grit", 0, 10, int(movie.get('Grit', 5)))
 
-        # Group 2
-        st.markdown("### 🔮 The Vibe")
         c_b1, c_b2, c_b3 = st.columns(3)
-        with c_b1:
-            u_dark = st.slider("md Darkness", 0, 10, int(movie.get('Darkness', 0)))
-        with c_b2:
-            u_weird = st.slider("👽 Weird", 0, 10, int(movie.get('Weird', 0)))
-        with c_b3:
-            u_shenan = st.slider("🃏 Shenanigans", 0, 10, int(movie.get('Shenanigans', 0)))
+        with c_b1: u_dark = st.slider("🌑 Darkness", 0, 10, int(movie.get('Darkness', 0)))
+        with c_b2: u_weird = st.slider("👽 Weird", 0, 10, int(movie.get('Weird', 0)))
+        with c_b3: u_shenan = st.slider("🃏 Shenanigans", 0, 10, int(movie.get('Shenanigans', 0)))
 
-        # Group 3
-        st.markdown("### 🎬 The Craft")
         c_c1, c_c2, c_c3 = st.columns(3)
-        with c_c1:
-            u_wild = st.slider("🐎 Wild Adventure", 0, 10, int(movie.get('Wild_Adventure', 5)))
-        with c_c2:
-            u_cine = st.slider("🎥 Cinematography", 0, 10, int(movie.get('Cinematography', 5)))
-        with c_c3:
-            u_sound = st.slider("🎵 Sound & Score", 0, 10, int(movie.get('Sound_Score', 5)))
+        with c_c1: u_wild = st.slider("🐎 Wild Adventure", 0, 10, int(movie.get('Wild_Adventure', 5)))
+        with c_c2: u_cine = st.slider("🎥 Cinematography", 0, 10, int(movie.get('Cinematography', 5)))
+        with c_c3: u_sound = st.slider("🎵 Sound & Score", 0, 10, int(movie.get('Sound_Score', 5)))
 
         st.divider()
         u_overall = st.slider("⭐ Overall Rating", 0.0, 10.0, float(movie.get('Avg_Rating', 5.0)))
         
         if st.form_submit_button("Submit Rating"):
-            # Update Logic (Weighted Average)
+            # Update Logic
             curr_votes = float(movie.get("Vote_Count", 1))
             new_votes = curr_votes + 1
             
@@ -176,13 +184,11 @@ if len(event.selection.rows) > 0:
                 new_sum = curr_sum + user_input
                 return new_sum, new_sum / new_votes
 
-            # Update Metadata
             df.at[selected_index, "Vote_Count"] = new_votes
             n_s, n_a = calc_new(movie['Avg_Rating'], "Sum_Rating", u_overall)
             df.at[selected_index, "Sum_Rating"] = n_s
             df.at[selected_index, "Avg_Rating"] = n_a
 
-            # Update 9 Metrics
             inputs = [
                 ("Classically_Mythic", u_mythic), ("Spaghettiness", u_spag), ("Grit", u_grit),
                 ("Darkness", u_dark), ("Weird", u_weird), ("Shenanigans", u_shenan),
